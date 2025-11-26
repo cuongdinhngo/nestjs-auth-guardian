@@ -1,98 +1,110 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# NestJS Auth Guardian
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A comprehensive NestJS library for JWT authentication with MFA/TOTP support. Provides secure two-factor authentication with authenticator apps and backup codes.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Features
 
-## Description
+- ✅ **JWT Authentication** - Secure token-based authentication
+- ✅ **MFA/TOTP Support** - Time-based one-time passwords with authenticator apps
+- ✅ **Backup Codes** - 10 single-use recovery codes
+- ✅ **Two-Step Login Flow** - Temporary tokens for MFA verification
+- ✅ **TypeORM Integration** - Easy integration with existing User entities
+- ✅ **@MfaEntity() Decorator** - Automatically adds MFA columns to your entities
+- ✅ **Guards & Decorators** - JWT guards, MFA verification, role-based access
+- ✅ **Type-Safe** - Full TypeScript support with interfaces and types
+- ✅ **Compatible** - Works seamlessly with nestjs-social-auth
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+---
 
-## Project setup
+## Quick Start (2 Minutes)
+
+### 1. Installation
 
 ```bash
-$ yarn install
+npm install nestjs-auth-guardian @nestjs/jwt @nestjs/passport @nestjs/typeorm passport-jwt speakeasy qrcode bcrypt typeorm
 ```
 
-## Compile and run the project
+### 2. Configure Environment Variables
 
-```bash
-# development
-$ yarn run start
+Create a `.env` file:
 
-# watch mode
-$ yarn run start:dev
-
-# production mode
-$ yarn run start:prod
+```env
+JWT_SECRET=your-super-secret-key-min-32-chars
+JWT_EXPIRES_IN=15m
+MFA_ISSUER=Your App Name
 ```
 
-## Run tests
+### 3. Update Your User Entity
 
-```bash
-# unit tests
-$ yarn run test
+```typescript
+import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { MfaEntity } from 'nestjs-auth-guardian';
 
-# e2e tests
-$ yarn run test:e2e
+@Entity('users')
+@MfaEntity()  // Automatically adds mfaEnabled, mfaSecret, mfaBackupCodes
+export class User {
+  @PrimaryGeneratedColumn()
+  id: number;
 
-# test coverage
-$ yarn run test:cov
+  @Column({ unique: true })
+  email: string;
+
+  @Column()
+  password: string;
+
+  @Column({ nullable: true })
+  name?: string;
+
+  // MFA columns added by @MfaEntity():
+  // - mfaEnabled: boolean
+  // - mfaSecret?: string
+  // - mfaBackupCodes?: string[]
+}
 ```
 
-## Deployment
+### 4. Import the Module
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+```typescript
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuthGuardianModule } from 'nestjs-auth-guardian';
+import { User } from './user.entity';
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ yarn install -g @nestjs/mau
-$ mau deploy
+@Module({
+  imports: [
+    TypeOrmModule.forRoot({ /* your config */ }),
+    AuthGuardianModule.forFeature(User),
+  ],
+})
+export class AppModule {}
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### 5. Use the Guards
 
-## Resources
+```typescript
+import { Controller, Get, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard, CurrentUser, MfaVerifiedGuard } from 'nestjs-auth-guardian';
 
-Check out a few resources that may come in handy when working with NestJS:
+@Controller('profile')
+@UseGuards(JwtAuthGuard)
+export class ProfileController {
+  @Get()
+  getProfile(@CurrentUser() user: any) {
+    return user;
+  }
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+  @Get('sensitive')
+  @UseGuards(MfaVerifiedGuard)  // Requires MFA verification
+  getSensitiveData(@CurrentUser() user: any) {
+    return { message: 'This requires MFA' };
+  }
+}
+```
 
-## Support
+That's it! Your app now has JWT authentication with MFA support.
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+---
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+MIT
